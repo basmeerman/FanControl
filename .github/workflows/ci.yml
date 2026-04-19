@@ -34,13 +34,9 @@ jobs:
       - name: Build firmware (lolin_d32)
         run: pio run -e lolin_d32
 
-      # NOTE: Round 3 of the plan adds Unity host tests under test/. Until then
-      # the `native` env may have no tests, which `pio test` treats as an error.
-      # `continue-on-error: true` makes this a soft gate for Phase 1/2.
-      # TODO: remove `continue-on-error` once Phase 3 lands real unit tests —
-      # at that point test failures must hard-fail CI.
+      # Host-side Unity tests for pure-logic modules (see test/README.md).
+      # This is a hard gate: failures must fail the build.
       - name: Run unit tests (native)
-        continue-on-error: true
         run: pio test -e native
 
       - name: Check binary size (<= 1.5 MB)

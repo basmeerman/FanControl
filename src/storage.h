@@ -6,11 +6,7 @@
 
 #include <Arduino.h>
 #include "config.h"
-
-struct FanCurve {
-  float   temps[FAN_CURVE_POINTS];
-  uint8_t pwm[FAN_CURVE_POINTS];
-};
+#include "fan_curve.h"   // FanCurve (moved here so it's host-testable)
 
 struct WifiConfig {
   String ssid;

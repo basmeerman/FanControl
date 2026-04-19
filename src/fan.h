@@ -9,7 +9,8 @@
 
 #include <Arduino.h>
 #include "config.h"
-#include "storage.h"   // FanCurve
+#include "fan_curve.h"   // FanCurve + pure interpolation (host-testable)
+#include "storage.h"
 
 namespace fan {
 

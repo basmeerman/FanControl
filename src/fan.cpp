@@ -1,5 +1,4 @@
 #include "fan.h"
-#include <math.h>
 
 namespace {
 
@@ -84,40 +83,9 @@ uint32_t currentFrequency() {
 }
 
 uint8_t computeFromTemperature(float c, const FanCurve& curve) {
-  if (isnan(c)) {
-    // Caller hasn't seen a reading yet; bias high but not failsafe.
-    // The fan task will still apply the min-percent floor via setPercent.
-    return 100;
-  }
-
-  // Below first point → the first point's PWM value (the caller lifts
-  // it up to fan_min via setPercent()'s floor).
-  if (c <= curve.temps[0]) {
-    return curve.pwm[0];
-  }
-  // Above last point → 100 %.
-  if (c >= curve.temps[FAN_CURVE_POINTS - 1]) {
-    return 100;
-  }
-
-  // Find the segment containing c and linearly interpolate.
-  for (uint8_t i = 0; i < FAN_CURVE_POINTS - 1; ++i) {
-    const float t0 = curve.temps[i];
-    const float t1 = curve.temps[i + 1];
-    if (c >= t0 && c <= t1) {
-      const float span = t1 - t0;
-      if (span <= 0.0f) return curve.pwm[i];  // guard: badly sorted curve
-      const float frac = (c - t0) / span;
-      const float p0   = (float)curve.pwm[i];
-      const float p1   = (float)curve.pwm[i + 1];
-      float       pct  = p0 + frac * (p1 - p0);
-      if (pct < 0.0f)   pct = 0.0f;
-      if (pct > 100.0f) pct = 100.0f;
-      return (uint8_t)(pct + 0.5f);
-    }
-  }
-  // Unreachable given the two endpoint checks above, but keep the fan moving.
-  return 100;
+  // Pure logic lives in fan_curve.h so it can be unit tested on the host.
+  // This thin wrapper exists so callers can keep using fan::computeFromTemperature().
+  return fan_curve::computeFromTemperature(c, curve);
 }
 
 } // namespace fan

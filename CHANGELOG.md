@@ -10,6 +10,23 @@ Release notes for each tagged version are extracted from this file by the
 
 ## [Unreleased]
 
+### Added
+
+- Unity host-test scaffold (`pio test -e native`):
+  - `test/test_fan_curve/` covers the pure temperature → PWM interpolation
+    (edges, exact curve points, midway rounding, NaN failsafe bias,
+    degenerate-segment guard).
+  - `test/README.md` documents the host vs. hardware tiers and the rule
+    that every new pure-logic function gets a Unity test before merge.
+  - CI: removed `continue-on-error` from the `pio test -e native` step —
+    host tests are now a hard gate.
+- `src/fan_curve.h` extraction: the pure `computeFromTemperature()`
+  interpolation moved out of `src/fan.cpp` into a header-only,
+  Arduino-free module so it can be compiled and tested on the host.
+  `FanCurve` moved from `src/storage.h` to `src/fan_curve.h`;
+  `storage.h` now includes the new header. Firmware build is
+  unaffected — `fan::computeFromTemperature` is a thin wrapper.
+
 ## [0.1.0] - 2026-04-19
 
 ### Added
