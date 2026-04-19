@@ -39,6 +39,13 @@ jobs:
       - name: Run unit tests (native)
         run: pio test -e native
 
+      # Static analysis via cppcheck. Soft gate initially — we want visibility
+      # into findings without blocking merges on advisory warnings. Tighten to
+      # --fail-on-defect when the baseline is clean.
+      - name: Static analysis (pio check)
+        continue-on-error: true
+        run: pio check -e lolin_d32 --fail-on-defect high --skip-packages --verbose
+
       - name: Check binary size (<= 1.5 MB)
         run: |
           SIZE=$(stat -c%s .pio/build/lolin_d32/firmware.bin)
