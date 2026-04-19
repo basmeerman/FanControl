@@ -10,11 +10,98 @@ Release notes for each tagged version are extracted from this file by the
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-19
+
+**Architecture switch: custom PlatformIO + Arduino C++ → ESPHome.**
+
+Firmware behaviour is unchanged in spirit (same hardware, same fan curve,
+same captive portal, same safety failsafe), but the entire ~2,000-line C++
+codebase is replaced by a single ~200-line YAML file. See
+`PROJECT_PLAN.md` "History" for the decision rationale.
+
 ### Added
-- `SECURITY.md` with release-verification recipe and key-rotation policy.
-- `docs/signing_public_key.pem` — public half of the release signing key,
-  committed so users can verify `.signed.bin` without coordination.
-- README "Verifying releases" section linking to the above.
+
+- `fancontrol.yaml` — single-source firmware config driving ESPHome:
+  - DHT22 on GPIO 4, 5 s polling, last-good caching via ESPHome filters.
+  - `output.ledc` PWM on GPIO 25, default 1 kHz, runtime-tunable
+    1000–5000 Hz via `number.template` + `ledc.set_frequency` action.
+    10-bit resolution auto-computed by ESPHome.
+  - `Fan Speed` template sensor with a 5-point piecewise-linear
+    temperature-to-PWM lambda matching the v0.1.x curve exactly.
+    NaN → 100 %; sensor-stall flag → 100 %.
+  - `Sensor Alarm` (60 s stall detection) and `Temperature Alarm`
+    (configurable threshold, default 35 °C) as `binary_sensor.template`
+    entities with `safety` / `problem` device classes.
+  - `Restart Counter` persisted via `globals` + `restore_value: true`,
+    incremented in `on_boot`.
+  - WiFi STA + open captive-portal AP `FanControl-Setup` via `captive_portal:`.
+  - mDNS `fancontrol.local`.
+  - ESPHome native API (`api:` with encryption key) as the default HA
+    transport. MQTT block left commented out for users who want the
+    v0.1.x topic shape.
+  - ESPHome `web_server` on port 80 for the built-in dashboard.
+  - OTA via `ota:` platform `esphome`, password-gated.
+  - `status_led` on GPIO 5 (LOLIN D32 onboard LED).
+  - `button.restart` and `button.factory_reset` entities.
+- `secrets.yaml.example` — template for WiFi credentials, API encryption
+  key, and OTA password. Real `secrets.yaml` gitignored.
+- `docs/home_assistant.md` — integration walkthrough, entity table, sample
+  automations, optional MQTT-with-TLS recipe.
+- `.github/workflows/ci.yml` now uses `esphome/build-action@v10` — full
+  compile gate (not just config lint), size gate unchanged (≤ 1.5 MB).
+- `.github/workflows/release.yml` publishes `firmware.bin`,
+  `firmware.ota.bin`, `firmware.factory.bin`, and their SHA-256 checksums.
+
+### Changed
+
+- **Home Assistant integration transport:** MQTT (with HA auto-discovery)
+  → ESPHome native API (encrypted, faster, zero-config on the HA side).
+  Users who want MQTT can uncomment the `mqtt:` block in `fancontrol.yaml`.
+- **Web UI:** custom 4-section dark-themed single-page PROGMEM UI →
+  ESPHome's built-in `web_server` dashboard. The control surface for most
+  users becomes Home Assistant itself.
+- **Documentation:**
+  - `README.md` rewritten for the ESPHome workflow.
+  - `CLAUDE.md` rewritten — architecture rules now about keeping the YAML
+    idiomatic rather than FreeRTOS task discipline.
+  - `CONTRIBUTING.md` rewritten — build loop is `esphome config/compile/run`;
+    release cut is merge `develop` → `main` + tag.
+  - `PROJECT_PLAN.md` rewritten as v2.0 with an ESPHome-shaped feature list
+    and a "History" section archiving the v0.1.x custom-C++ approach.
+  - `SECURITY.md` updated — new OTA + API auth model documented; v0.1.x RSA
+    signature verification recipe retained for historical artifacts.
+  - `docs/wiring_diagram.md` kept (pin map unchanged); references to
+    `src/config.h` updated to `fancontrol.yaml`.
+  - `docs/mqtt_topics.md` and `docs/api.md` deleted — MQTT is now optional
+    and documented inline in the YAML; no custom HTTP / WebSocket API
+    exists under ESPHome.
+
+### Removed
+
+- **Entire custom C++ tree** under `src/` (config, storage, sensor, fan,
+  fan_curve, watchdog, wifi_manager, mqtt, webserver, websocket,
+  index_html, version, main). ~2,000 LOC deleted.
+- **Unity test scaffold** under `test/` — ESPHome has no comparable unit
+  test concept; the fan-curve lambda was ported verbatim from the Unity-
+  tested `fan_curve::computeFromTemperature`, so the logic is unchanged.
+- `platformio.ini` — ESPHome handles the PlatformIO build transparently.
+- **RSA-signed OTA pipeline.** v0.2.0+ releases ship `firmware.bin` +
+  SHA-256 only. The `SECRET_RSA_KEY` repo secret remains configured but
+  unused; `docs/signing_public_key.pem` is kept so v0.1.x signed
+  binaries remain verifiable. See `SECURITY.md`.
+
+### Migration notes
+
+- **Reflash required.** Pre-v0.2.0 devices store their NVS keys under the
+  custom `fancontrol` namespace; ESPHome uses its own global-variables
+  namespace layout. Flashing v0.2.0 over v0.1.x will not carry user
+  settings forward — reconfigure via the captive portal on first boot.
+- **Home Assistant:** remove the MQTT-based device (if you want). Install
+  the ESPHome integration if you haven't; paste the API key from
+  `secrets.yaml` when prompted.
+- **OTA password** in `secrets.yaml` is the one you chose in v0.2.0;
+  there is no longer a "changeme" default + first-boot forced-rotation
+  banner (ESPHome bakes the password at compile time).
 
 ## [0.1.1] - 2026-04-19
 
@@ -124,6 +211,7 @@ SUCCESS, `pio test -e native` 7/7 PASSED.
 - `pio run -e lolin_d32` → SUCCESS, RAM 15.0 %, flash 54.5 %.
 - `pio test -e native` → 7 / 7 PASSED.
 
-[Unreleased]: https://github.com/basmeerman/FanControl/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/basmeerman/FanControl/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/basmeerman/FanControl/releases/tag/v0.2.0
 [0.1.1]: https://github.com/basmeerman/FanControl/releases/tag/v0.1.1
 [0.1.0]: https://github.com/basmeerman/FanControl/releases/tag/v0.1.0

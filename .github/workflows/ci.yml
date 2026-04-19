@@ -1,4 +1,4 @@
-name: PlatformIO CI
+name: ESPHome CI
 
 on:
   push:
@@ -13,51 +13,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Cache PlatformIO + pip
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/pip
-            ~/.platformio
-          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pio-
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Install PlatformIO
-        run: pip install --upgrade platformio
-
-      - name: Build firmware (lolin_d32)
-        run: pio run -e lolin_d32
-
-      # Host-side Unity tests for pure-logic modules (see test/README.md).
-      # This is a hard gate: failures must fail the build.
-      - name: Run unit tests (native)
-        run: pio test -e native
-
-      # Static analysis via cppcheck. Soft gate initially — we want visibility
-      # into findings without blocking merges on advisory warnings. Tighten to
-      # --fail-on-defect when the baseline is clean.
-      - name: Static analysis (pio check)
-        continue-on-error: true
-        run: pio check -e lolin_d32 --fail-on-defect high --skip-packages --verbose
-
-      - name: Check binary size (<= 1.5 MB)
+      # Seed a dummy secrets.yaml so `esphome config` resolves !secret
+      # references during the lint. Real secrets live in the maintainer's
+      # local secrets.yaml (gitignored) and are not needed for CI.
+      - name: Stage dummy secrets for lint
         run: |
-          SIZE=$(stat -c%s .pio/build/lolin_d32/firmware.bin)
+          python3 -c 'import base64, os; print("api_encryption_key: \"" + base64.b64encode(os.urandom(32)).decode() + "\"")' > secrets.yaml
+          cat >> secrets.yaml <<EOF
+          wifi_ssid: "CiDummyNet"
+          wifi_password: "ci-dummy-password"
+          ota_password: "ci-dummy-ota-password"
+          EOF
+
+      - name: Validate ESPHome config
+        uses: esphome/build-action@v7
+        with:
+          yaml-file: fancontrol.yaml
+          version: latest
+
+      - name: Firmware size gate (<= 1.5 MB)
+        run: |
+          FW=$(find . -path './.esphome/build/*/firmware.bin' -type f | head -1)
+          if [ -z "$FW" ]; then
+            echo "No firmware.bin found — build step likely failed."
+            exit 1
+          fi
+          SIZE=$(stat -c%s "$FW")
           echo "Firmware size: $SIZE bytes"
           if [ "$SIZE" -gt 1500000 ]; then
             echo "ERROR: firmware too large (>1.5MB)"
             exit 1
           fi
 
-      - name: Upload firmware artifact
+      - name: Upload firmware artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: firmware-${{ github.sha }}
-          path: .pio/build/lolin_d32/firmware.bin
+          name: fancontrol-${{ github.sha }}
+          path: |
+            .esphome/build/fancontrol/.pioenvs/fancontrol/firmware.bin
+            .esphome/build/fancontrol/.pioenvs/fancontrol/firmware.ota.bin
+            .esphome/build/fancontrol/.pioenvs/fancontrol/firmware.factory.bin
           retention-days: 30
+          if-no-files-found: warn

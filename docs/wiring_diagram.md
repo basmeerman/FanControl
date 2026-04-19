@@ -11,7 +11,7 @@
 | Level shifter (3.3 V ↔ 9 V) | TXS0108E 8-ch or 74HCT125 — any channel; pin choice is not dictated by the shifter. |
 | Enclosure, 230 V screw terminal, 5 V USB PSU | 1 A on the 5 V rail is plenty. |
 
-## Pin map (firmware `src/config.h`)
+## Pin map (`fancontrol.yaml`)
 
 | ESP32 GPIO | Role | Direction | Notes |
 |---|---|---|---|
@@ -70,6 +70,7 @@ If the fan hums audibly and doesn't ramp smoothly, try **2 kHz** in the web UI (
 
 ## Factory reset
 
-Currently only triggered via the web UI's System section. A planned enhancement
-(`PIN_FACTORY_RESET = GPIO 0`) will detect the boot button held for 5 s at
-runtime and call `storage::factoryReset()` + restart.
+Currently triggered via the ESPHome dashboard's `Factory Reset` button entity
+(exposed in both the built-in web UI and Home Assistant). A future enhancement
+would detect GPIO 0 (boot button) held for 5 s at runtime and trigger a
+factory reset automation; not yet wired into the YAML.
