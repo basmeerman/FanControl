@@ -1,101 +1,79 @@
 # FanControl
 
 ESP32 ventilation controller for a home battery room (Victron Multiplus / JK BMS / 6× 48 V LFP).
-Drives a Ruck EM 125L EC 02 fan via PWM based on DHT22 temperature, exposes live status over an
-embedded web UI (WebSocket push every 2 s) and integrates with Home Assistant through MQTT
-auto-discovery (one HA device, child entities for temperature, humidity, fan speed, PWM
-frequency, restarts and three alarm binary sensors).
+Drives a Ruck EM 125L EC 02 fan via PWM based on DHT22 temperature, integrates with Home
+Assistant over the native ESPHome API, exposes a built-in web dashboard on `fancontrol.local`.
 
-- **Hardware:** LOLIN D32 ESP32 + DHT22 + Ruck EM 125L EC 02 (PWM via level shifter + MT3608 → 9 V)
-- **PWM:** default 1 kHz, runtime-tunable 1–5 kHz via web UI (per Ruck datasheet)
-- **Platform:** PlatformIO, Arduino framework, board `lolin_d32`
-- **Design reference:** SmartEVSE-3.5 (basmeerman/dingo35)
+- **Hardware:** LOLIN D32 (ESP32) + DHT22 + Ruck EM 125L EC 02 (PWM via level-shifter + MT3608 → 9 V)
+- **PWM:** default 1 kHz, runtime-tunable 1–5 kHz (per Ruck datasheet)
+- **Framework:** [ESPHome](https://esphome.io) — YAML-driven firmware, compiled on demand
+- **Firmware size:** ~945 KB (under the 1.5 MB CI gate)
 
-## Status
+## Quick start
 
-v0.1.0 — first end-to-end release. All modules wired, all quality gates green.
-See [`CHANGELOG.md`](CHANGELOG.md) for the full feature list.
-
-| | |
-|---|---|
-| Build | `pio run` SUCCESS, RAM 15 %, flash 54.5 % (under the 1.5 MB CI gate) |
-| Tests | `pio test -e native` 7 / 7 PASSED |
-| CI | GitHub Actions builds every push and PR; tag `v*.*.*` triggers signed release |
-
-## Build & flash
+Prerequisites: Python 3.10+, [`pipx`](https://pipx.pypa.io), and a USB-C cable.
 
 ```bash
-pio run                          # build firmware for lolin_d32
-pio run -t upload                # serial upload over USB
-pio run -t upload --upload-port=fancontrol.local  # OTA after first boot
-pio device monitor -b 115200     # serial monitor
-pio test -e native               # host-side Unity tests
-pio test -e native -f test_fan_curve   # run a single test folder
+# 1. Install ESPHome
+pipx install esphome
+
+# 2. Configure secrets
+cp secrets.yaml.example secrets.yaml
+# Edit secrets.yaml — fill in WiFi creds and pick strong passwords
+# (generate an API encryption key with: openssl rand -base64 32)
+
+# 3. Plug the LOLIN D32 into USB, then flash the first time over USB:
+esphome run fancontrol.yaml
+
+# 4. All subsequent flashes happen over WiFi (OTA, password-gated):
+esphome run fancontrol.yaml
 ```
 
-## First boot
+If WiFi credentials are wrong or missing, the device falls back to an open AP
+named **`FanControl-Setup`** at `192.168.4.1` — connect, configure, save.
 
-1. Flash via USB the first time.
-2. The device starts in captive-portal mode — connect to the open WiFi SSID
-   **`FanControl-Setup`** and you'll be redirected to the configuration page.
-3. Enter your home WiFi credentials and (optionally) MQTT broker details, save.
-4. The device reboots into station mode and is reachable at
-   [`http://fancontrol.local`](http://fancontrol.local).
-5. The web UI shows a sticky red banner until you set a new OTA password —
-   OTA uploads return 403 until then.
+## Home Assistant integration
 
-## Endpoints
+Once on the network, HA auto-discovers the device via the ESPHome integration.
+No manual MQTT configuration needed. Exposed entities:
 
-| Path | Purpose |
-|---|---|
-| `/` | Single-page web UI (status, settings, system) |
-| `/ws` | WebSocket — JSON status push every 2 s; inbound config frames |
-| `/update` | ElegantOTA (HTTP basic-auth, gated until password is changed) |
-| `/healthz` | `200 ok` for upstream monitoring |
+| Entity | Type | Notes |
+|---|---|---|
+| Temperature | sensor | °C, from DHT22 |
+| Humidity | sensor | %, from DHT22 |
+| Fan Speed | sensor | % duty, derived from the curve |
+| Fan PWM Frequency | sensor | Hz |
+| Restart Counter | sensor | monotonic, persisted in NVS |
+| Uptime | sensor | seconds |
+| WiFi Signal | sensor | dBm |
+| Temperature Alarm | binary_sensor | `safety` class, fires at the configured threshold |
+| Sensor Alarm | binary_sensor | `problem` class, fires after 60 s of no successful reads |
+| Alarm Temperature | number | tunable threshold |
+| Fan Min % | number | minimum duty under normal operation |
+| Fan PWM Frequency Setting | number | 1000–5000 Hz, applied live via `ledc.set_frequency` |
+| Restart / Factory Reset | button | standard ESPHome buttons |
 
-## MQTT topics
+## Safety behaviour
 
-Published under the configurable prefix (default `fancontrol`). Full table in
-[`PROJECT_PLAN.md`](PROJECT_PLAN.md) §6.
+- **Sensor stall** (no successful DHT22 read for 60 s) → fan forced to 100 %.
+- **NaN temperature reading** → fan biased to 100 % (curve treats unknown as hot).
+- **Fan-curve interpolation**: linear between the 5 configured (°C, %) points; below the first point → use its PWM with the min-% floor; above the last point → 100 %.
+- **Hardware watchdog**: managed by ESPHome core; restart counter persisted across reboots.
 
-```
-fancontrol/sensor/temperature/state         24.3
-fancontrol/sensor/humidity/state            58.2
-fancontrol/sensor/fan_speed/state           45
-fancontrol/sensor/fan_pwm_freq/state        1000
-fancontrol/sensor/restarts/state            2
-fancontrol/binary_sensor/alarm_temp/state   ON|OFF
-fancontrol/binary_sensor/alarm_sensor/state ON|OFF
-fancontrol/binary_sensor/watchdog/state     ON|OFF
-fancontrol/status                           online|offline
-```
+## Web dashboard
 
-HA discovery is republished on every (re)connect under `homeassistant/{component}/{node_id}_*`.
-TLS is enabled automatically when the broker port is `8883` (insecure mode, matches SmartEVSE).
-
-## Verifying releases
-
-Every tagged release ships `firmware.bin` + SHA-256 + `firmware.signed.bin`.
-Verify signature with the public key committed at
-[`docs/signing_public_key.pem`](docs/signing_public_key.pem):
-
-```bash
-dd if=FanControl-vX.Y.Z.signed.bin of=firmware.sign bs=1 count=256 status=none
-dd if=FanControl-vX.Y.Z.signed.bin of=firmware.bin  bs=1 skip=256  status=none
-openssl dgst -verify docs/signing_public_key.pem -keyform PEM -sha256 \
-  -signature firmware.sign firmware.bin
-# → Verified OK
-```
-
-Full recipe + key rotation policy in [`SECURITY.md`](SECURITY.md).
+ESPHome's built-in dashboard is served on port 80 at `http://fancontrol.local` — live
+sensor values, controls for the number entities, restart/factory-reset buttons.
 
 ## Documentation
 
-- [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — v1.2, the single source of truth (features, test
-  matrix, agent roles, CI/CD layout)
-- [`CLAUDE.md`](CLAUDE.md) — architecture constraints for future Claude Code sessions
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — branching model + RSA signing-key generation /
-  verification recipe
+- [`fancontrol.yaml`](fancontrol.yaml) — single source of truth for firmware behaviour
+- [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — project goals, history, and the rationale for the
+  ESPHome switch (pre-v0.2.0 custom-C++ architecture documented under "History")
+- [`docs/wiring_diagram.md`](docs/wiring_diagram.md) — BOM, pin map, PWM verification
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev workflow, branching, release cut
+- [`SECURITY.md`](SECURITY.md) — OTA/API security model, pre-v0.2.0 legacy RSA-signed
+  releases still verifiable
 
 ## License
 

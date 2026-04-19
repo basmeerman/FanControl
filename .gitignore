@@ -1,10 +1,18 @@
-.pio/
-.pioenvs/
-.piolibdeps/
+# ESPHome
+.esphome/
+secrets.yaml
+
+# Editor / OS
 .vscode/
-.cache/
 .DS_Store
 *.swp
 *.bak
+
+# Legacy PlatformIO artifacts — kept so a stray .pio/ from pre-v0.2.0
+# checkouts never gets committed back.
+.pio/
+.pioenvs/
+.piolibdeps/
+.cache/
 build/
 dist/

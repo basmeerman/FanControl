@@ -17,64 +17,38 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache PlatformIO + pip
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/pip
-            ~/.platformio
-          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pio-
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Install PlatformIO
-        run: pip install --upgrade platformio
-
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Inject version into firmware
+      - name: Stage dummy secrets for build
         run: |
-          sed -i 's/#define VERSION ".*"/#define VERSION "'${{ steps.version.outputs.VERSION }}'"/' src/version.h
+          python3 -c 'import base64, os; print("api_encryption_key: \"" + base64.b64encode(os.urandom(32)).decode() + "\"")' > secrets.yaml
+          cat >> secrets.yaml <<EOF
+          wifi_ssid: "ReleaseDummyNet"
+          wifi_password: "release-dummy-password"
+          ota_password: "release-dummy-ota-password"
+          EOF
 
-      - name: Build release firmware
-        run: pio run -e lolin_d32
+      - name: Build ESPHome firmware
+        uses: esphome/build-action@v10
+        with:
+          yaml-file: fancontrol.yaml
+          version: latest
 
-      - name: Rename binary
+      - name: Collect + rename release artifacts
+        id: artifacts
         run: |
-          cp .pio/build/lolin_d32/firmware.bin \
-             FanControl-${{ steps.version.outputs.VERSION }}.bin
-
-      - name: SHA256 checksum
-        run: |
-          sha256sum FanControl-${{ steps.version.outputs.VERSION }}.bin \
-            > FanControl-${{ steps.version.outputs.VERSION }}.bin.sha256
-
-      # Signing matches SmartEVSE-3.5/pio-build.yaml exactly.
-      # Repo secret SECRET_RSA_KEY holds the PEM-encoded RSA private key.
-      # If the secret is unset the step exits 0 silently so forks build cleanly;
-      # the release step then skips the .signed.bin via fail_on_unmatched_files: false.
-      - name: Sign firmware
-        env:
-          super_secret: ${{ secrets.SECRET_RSA_KEY }}
-        run: |
-          if [ -z "$super_secret" ]; then
-            echo "Signing key not set, skipping firmware signing"
-            exit 0
-          fi
-          secret_file=$(mktemp)
-          echo "$super_secret" > "$secret_file"
-          openssl dgst -sign "$secret_file" -keyform PEM -sha256 \
-            -out firmware.sign -binary FanControl-${{ steps.version.outputs.VERSION }}.bin
-          cat firmware.sign FanControl-${{ steps.version.outputs.VERSION }}.bin \
-            > FanControl-${{ steps.version.outputs.VERSION }}.signed.bin
-          rm -f "$secret_file" firmware.sign
+          VER=${{ steps.version.outputs.VERSION }}
+          mkdir -p release
+          cp .esphome/build/fancontrol/.pioenvs/fancontrol/firmware.bin         release/FanControl-${VER}.bin
+          cp .esphome/build/fancontrol/.pioenvs/fancontrol/firmware.ota.bin     release/FanControl-${VER}.ota.bin
+          cp .esphome/build/fancontrol/.pioenvs/fancontrol/firmware.factory.bin release/FanControl-${VER}.factory.bin
+          cd release
+          sha256sum FanControl-${VER}.bin         > FanControl-${VER}.bin.sha256
+          sha256sum FanControl-${VER}.ota.bin     > FanControl-${VER}.ota.bin.sha256
+          sha256sum FanControl-${VER}.factory.bin > FanControl-${VER}.factory.bin.sha256
+          ls -la
 
       - name: Extract changelog section for this release
         run: |
@@ -94,9 +68,6 @@ jobs:
           draft: false
           prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
           fail_on_unmatched_files: false
-          files: |
-            FanControl-${{ steps.version.outputs.VERSION }}.bin
-            FanControl-${{ steps.version.outputs.VERSION }}.bin.sha256
-            FanControl-${{ steps.version.outputs.VERSION }}.signed.bin
+          files: release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

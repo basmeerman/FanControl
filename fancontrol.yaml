@@ -1,0 +1,274 @@
+# FanControl — ESPHome configuration
+#
+# Hardware: LOLIN D32 (ESP32) + DHT22 (with onboard pull-up) + Ruck EM 125L
+# EC 02 via level-shifter + MT3608 to 9 V. See docs/wiring_diagram.md.
+#
+# Copy secrets.yaml.example → secrets.yaml and fill in before first build.
+# Compile + flash the first time over USB:
+#   esphome run fancontrol.yaml
+# Subsequent flashes happen via OTA over WiFi.
+
+substitutions:
+  device_name: fancontrol
+  device_friendly_name: FanControl
+  # Fan-curve defaults (°C → % duty). Runtime-tunable in HA via `number` components.
+  curve_t0: "15.0"
+  curve_t1: "20.0"
+  curve_t2: "25.0"
+  curve_t3: "30.0"
+  curve_t4: "35.0"
+  curve_p0: "10"
+  curve_p1: "25"
+  curve_p2: "50"
+  curve_p3: "75"
+  curve_p4: "100"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${device_friendly_name}
+  comment: "Home battery room ventilation controller"
+  on_boot:
+    priority: -10
+    then:
+      - lambda: |-
+          id(restart_counter) += 1;
+      - logger.log:
+          format: "FanControl boot — restart counter now %u"
+          args: ["id(restart_counter)"]
+
+esp32:
+  board: lolin_d32
+  framework:
+    type: arduino
+
+logger:
+  level: INFO
+  baud_rate: 115200
+
+# Prefer ESPHome native API for Home Assistant (encrypted, fast). MQTT
+# left optional below for users who want to keep the v0.1.x topic shape.
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    # Open captive portal on first boot / on WiFi-config loss.
+    ssid: "FanControl-Setup"
+  # Fast reconnect; ESPHome handles STA reconnect automatically.
+
+captive_portal:
+
+mdns:
+  # Advertises the device as fancontrol.local on the LAN.
+
+# Optional MQTT. Uncomment + fill secrets.yaml to publish to an external
+# broker in addition to (or instead of) the native API.
+# mqtt:
+#   broker: !secret mqtt_host
+#   port: 1883
+#   username: !secret mqtt_user
+#   password: !secret mqtt_password
+#   topic_prefix: fancontrol
+#   discovery: true
+#   discovery_retain: true
+#   birth_message:
+#     topic: fancontrol/status
+#     payload: online
+#     retain: true
+#   will_message:
+#     topic: fancontrol/status
+#     payload: offline
+#     retain: true
+
+web_server:
+  port: 80
+  version: 3
+
+# -------- Globals (restore_value = persisted across reboots) --------
+
+globals:
+  - id: restart_counter
+    type: uint32_t
+    restore_value: true
+    initial_value: "0"
+  - id: last_sensor_read_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+
+# -------- Sensors --------
+
+sensor:
+  - platform: dht
+    model: DHT22
+    pin: GPIO4
+    update_interval: 5s
+    temperature:
+      name: "Temperature"
+      id: dht_temperature
+      accuracy_decimals: 1
+      on_value:
+        then:
+          - lambda: "id(last_sensor_read_ms) = millis();"
+      filters:
+        - filter_out: nan
+    humidity:
+      name: "Humidity"
+      id: dht_humidity
+      accuracy_decimals: 1
+      filters:
+        - filter_out: nan
+
+  # Fan speed derived from the curve. Drives the PWM output via on_value.
+  - platform: template
+    name: "Fan Speed"
+    id: fan_speed_pct
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      const float t = id(dht_temperature).state;
+      if (std::isnan(t)) return 100.0f;  // sensor warmup / NaN → failsafe bias
+      if (id(alarm_sensor_stall).state) return 100.0f;  // SW watchdog stall
+
+      const float ts[5] = { ${curve_t0}, ${curve_t1}, ${curve_t2}, ${curve_t3}, ${curve_t4} };
+      const float ps[5] = { ${curve_p0}, ${curve_p1}, ${curve_p2}, ${curve_p3}, ${curve_p4} };
+
+      float pct;
+      if      (t <= ts[0]) pct = ps[0];
+      else if (t >= ts[4]) pct = 100.0f;
+      else {
+        int i = 0;
+        while (i < 4 && !(t >= ts[i] && t <= ts[i + 1])) i++;
+        const float span = ts[i + 1] - ts[i];
+        const float frac = (span <= 0.0f) ? 0.0f : (t - ts[i]) / span;
+        pct = ps[i] + frac * (ps[i + 1] - ps[i]);
+      }
+
+      const float min_pct = id(fan_min_pct).state;
+      if (pct < min_pct) pct = min_pct;
+      if (pct > 100.0f)  pct = 100.0f;
+      return pct;
+    on_value:
+      - output.set_level:
+          id: fan_pwm_output
+          level: !lambda "return x / 100.0f;"
+
+  - platform: template
+    name: "Fan PWM Frequency"
+    id: fan_pwm_freq_sensor
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 0
+    update_interval: 60s
+    lambda: "return id(fan_pwm_freq_setting).state;"
+
+  - platform: template
+    name: "Restart Counter"
+    id: restart_count_sensor
+    update_interval: 60s
+    state_class: total_increasing
+    lambda: "return (float) id(restart_counter);"
+
+  - platform: uptime
+    name: "Uptime"
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+
+# -------- Binary sensors (alarms) --------
+
+binary_sensor:
+  # Temperature exceeded the configured alarm threshold.
+  - platform: template
+    name: "Temperature Alarm"
+    id: alarm_temperature
+    device_class: safety
+    lambda: |-
+      const float t = id(dht_temperature).state;
+      if (std::isnan(t)) return {};
+      return t >= id(alarm_temp_threshold).state;
+
+  # Sensor stall: no successful DHT22 read in >60 s — triggers fan failsafe.
+  - platform: template
+    name: "Sensor Alarm"
+    id: alarm_sensor_stall
+    device_class: problem
+    lambda: |-
+      if (id(last_sensor_read_ms) == 0) return {};
+      return (millis() - id(last_sensor_read_ms)) > 60000;
+
+# -------- Tunable settings (number components, persisted via restore_value) --------
+
+number:
+  - platform: template
+    name: "Alarm Temperature"
+    id: alarm_temp_threshold
+    min_value: 0
+    max_value: 80
+    step: 1
+    unit_of_measurement: "°C"
+    initial_value: 35
+    restore_value: true
+    optimistic: true
+    mode: box
+
+  - platform: template
+    name: "Fan Min %"
+    id: fan_min_pct
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    initial_value: 10
+    restore_value: true
+    optimistic: true
+    mode: box
+
+  - platform: template
+    name: "Fan PWM Frequency Setting"
+    id: fan_pwm_freq_setting
+    min_value: 1000
+    max_value: 5000
+    step: 100
+    unit_of_measurement: "Hz"
+    initial_value: 1000
+    restore_value: true
+    optimistic: true
+    mode: box
+    on_value:
+      - output.ledc.set_frequency:
+          id: fan_pwm_output
+          frequency: !lambda "return x;"
+
+# -------- Output --------
+
+output:
+  - platform: ledc
+    pin: GPIO25
+    id: fan_pwm_output
+    frequency: 1000Hz
+    channel: 0
+    # bit_depth is auto-computed by ESPHome based on frequency (10-bit at 1 kHz).
+
+# -------- Status LED (LOLIN D32 onboard, active-low) --------
+
+status_led:
+  pin:
+    number: GPIO5
+    inverted: true
+
+# -------- Control buttons --------
+
+button:
+  - platform: restart
+    name: "Restart"
+  - platform: factory_reset
+    name: "Factory Reset"

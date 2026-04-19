@@ -1,89 +1,94 @@
 # Contributing to FanControl
 
-Thanks for your interest in improving FanControl. This doc covers the local
-build, the branching model, how release signing works, and the CHANGELOG rule.
+FanControl is an ESPHome project — the firmware is a single YAML file
+([`fancontrol.yaml`](fancontrol.yaml)) compiled by ESPHome. If you want the
+short version: get ESPHome installed, make changes, `esphome compile
+fancontrol.yaml`, open a PR.
 
-`PROJECT_PLAN.md` is the single source of truth for features, architecture, and
-quality gates — read it before opening a non-trivial PR. `CLAUDE.md` summarises
-the hard architectural rules (no `delay()`, NVS return-check, fan fail-safe,
-separate FreeRTOS tasks, etc.).
-
-## Building locally
-
-You need [PlatformIO Core](https://platformio.org/install/cli) (Python 3.11+).
+## Local setup
 
 ```bash
-pio run -e lolin_d32            # build firmware for the LOLIN D32
-pio test -e native              # run Unity host tests
-pio test -e native -f test_sensor   # run a single test folder
-pio device monitor -b 115200    # serial monitor at 115200 baud
-pio run -t upload               # OTA upload (espota → fancontrol.local)
+pipx install esphome
+cp secrets.yaml.example secrets.yaml
+# Edit secrets.yaml — WiFi creds, API encryption key, OTA password.
+# Generate an API key with: openssl rand -base64 32
 ```
 
-CI runs `pio run` and `pio test -e native` on every push and PR to `main` and
-`develop`. The firmware must stay under 1.5 MB — the CI job hard-fails otherwise.
+`secrets.yaml` is gitignored. Never commit real credentials.
+
+## Development loop
+
+```bash
+esphome config   fancontrol.yaml   # lint only (seconds)
+esphome compile  fancontrol.yaml   # full build (tens of seconds)
+esphome run      fancontrol.yaml   # compile + flash (USB or OTA)
+esphome logs     fancontrol.yaml   # stream runtime logs
+```
+
+The important gate is **compile**, not config — ESPHome only type-checks
+lambdas at compile time.
 
 ## Branching model
 
 ```
-main          stable releases, each with a tag + GitHub Release
-  |
-  +-- develop   integration branch, CI must be green
-        |
-        +-- feature/<short-name>   work here, PR into develop
-        +-- fix/<short-name>       bug fixes, PR into develop
+main                stable releases, each tagged vX.Y.Z
+  └─ develop        integration branch, CI must be green
+        ├─ feature/<short-name>
+        └─ fix/<short-name>
 ```
 
-- Feature branches come off `develop` and PR back into `develop`.
-- A release is cut by merging `develop` into `main` (`--no-ff`), then pushing a
-  `vX.Y.Z` tag against `main`. The tag push triggers `release.yml`, which
-  injects the version into `src/version.h`, builds, signs, and publishes.
-- `main` is never a direct work branch.
+`main` is protected: PRs required, CI green before merge. `develop` requires CI
+green. Solo-maintainer mode has `required_approving_review_count: 0` so you
+can self-merge.
 
-Versioning follows [SemVer](https://semver.org/). Breaking MQTT topic or web API
-changes bump MAJOR; new backwards-compatible features bump MINOR; bugfixes bump
-PATCH. Pre-releases use suffixes like `v1.1.0-beta.1` and are auto-marked as
-prereleases by the workflow (any tag containing `-`).
-
-## Release signing (RSA + openssl, SmartEVSE-3.5 compatible)
-
-Signed release binaries allow OTA clients and users to verify authenticity. The
-scheme matches SmartEVSE-3.5 exactly: a 2048-bit RSA key signs a SHA-256 digest
-of `firmware.bin`, and the 256-byte signature is **prepended** to the firmware
-to produce `firmware.signed.bin`.
-
-Generating the keypair (do this once, keep the private key OUT of the repo):
+Release flow:
 
 ```bash
-# Generate signing keypair (one time, keep private key OUT of the repo)
-openssl genrsa -out fancontrol_signing_key.pem 2048
-openssl rsa -in fancontrol_signing_key.pem -pubout -out fancontrol_signing_key.pub.pem
-
-# Add the private key to GitHub secrets as SECRET_RSA_KEY
-gh secret set SECRET_RSA_KEY < fancontrol_signing_key.pem
-
-# Verifying a release artifact locally:
-# 1. Split signature off the signed binary (signature is first 256 bytes for 2048-bit RSA)
-dd if=FanControl-vX.Y.Z.signed.bin of=firmware.sign bs=1 count=256
-dd if=FanControl-vX.Y.Z.signed.bin of=firmware.bin  bs=1 skip=256
-openssl dgst -verify fancontrol_signing_key.pub.pem -keyform PEM -sha256 \
-  -signature firmware.sign firmware.bin
-# → "Verified OK"
+git checkout main
+git merge develop --no-ff -m "Release v0.X.Y"
+git tag vX.Y.Z
+git push origin main --tags
+# `release.yml` fires automatically on the tag push, compiles, and publishes
+# firmware.{bin,ota.bin,factory.bin} + SHA-256 checksums to GitHub Releases.
 ```
 
-If `SECRET_RSA_KEY` is not set (for example, on a fork), the signing step skips
-silently and the release simply omits `.signed.bin`. `.bin` and `.bin.sha256`
-are always published.
+## CHANGELOG rule
 
-## CHANGELOG
+Every PR updates `CHANGELOG.md` under `## [Unreleased]` in
+[Keep-a-Changelog](https://keepachangelog.com/en/1.1.0/) format. At release
+time, the maintainer renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`
+and adds a fresh empty `## [Unreleased]` on top. The release workflow
+extracts the matching section with `awk` and uses it as the GitHub Release
+body — keep headings exact.
 
-Every PR must update `CHANGELOG.md` under the `## [Unreleased]` section.
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## Release verification
 
-When releasing, the maintainer:
-1. Renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`.
-2. Adds a fresh empty `## [Unreleased]` on top.
-3. Merges to `main` and pushes the `vX.Y.Z` tag.
+v0.2.0+ releases are **not RSA-signed**. Verify with the published SHA-256:
 
-The release workflow extracts the matching section with `awk` and uses it as
-the GitHub Release body — so keep headings clean and the version format exact.
+```bash
+sha256sum -c FanControl-vX.Y.Z.bin.sha256
+# → FanControl-vX.Y.Z.bin: OK
+```
+
+Pre-v0.2.0 releases (v0.1.0, v0.1.1) were RSA-signed under the old custom
+C++ architecture and still verifiable against
+[`docs/signing_public_key.pem`](docs/signing_public_key.pem) — see
+[`SECURITY.md`](SECURITY.md).
+
+## Architecture rules for PRs
+
+Summarised here; full list in [`CLAUDE.md`](CLAUDE.md):
+
+- Prefer built-in ESPHome components over lambdas.
+- Lambdas stay short; the fan-curve interpolation is the exception.
+- Every tunable is a `number.template` with `restore_value: true`.
+- Safety behaviour (sensor stall → fan 100 %) must be present somewhere in the
+  YAML, even if you refactor its shape.
+- No hard-coded credentials. Ever.
+
+## Reporting issues
+
+Open a GitHub issue with the appropriate label (`bug`, `enhancement`,
+`safety`, `docs`). For security-sensitive reports, use a
+[private security advisory](https://github.com/basmeerman/FanControl/security/advisories/new)
+instead.
