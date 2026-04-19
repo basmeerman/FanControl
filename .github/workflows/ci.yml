@@ -1,0 +1,60 @@
+name: PlatformIO CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache PlatformIO + pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build firmware (lolin_d32)
+        run: pio run -e lolin_d32
+
+      # NOTE: Round 3 of the plan adds Unity host tests under test/. Until then
+      # the `native` env may have no tests, which `pio test` treats as an error.
+      # `continue-on-error: true` makes this a soft gate for Phase 1/2.
+      # TODO: remove `continue-on-error` once Phase 3 lands real unit tests —
+      # at that point test failures must hard-fail CI.
+      - name: Run unit tests (native)
+        continue-on-error: true
+        run: pio test -e native
+
+      - name: Check binary size (<= 1.5 MB)
+        run: |
+          SIZE=$(stat -c%s .pio/build/lolin_d32/firmware.bin)
+          echo "Firmware size: $SIZE bytes"
+          if [ "$SIZE" -gt 1500000 ]; then
+            echo "ERROR: firmware too large (>1.5MB)"
+            exit 1
+          fi
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.sha }}
+          path: .pio/build/lolin_d32/firmware.bin
+          retention-days: 30

@@ -1,0 +1,100 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for changelog)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache PlatformIO + pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Inject version into firmware
+        run: |
+          sed -i 's/#define VERSION ".*"/#define VERSION "'${{ steps.version.outputs.VERSION }}'"/' src/version.h
+
+      - name: Build release firmware
+        run: pio run -e lolin_d32
+
+      - name: Rename binary
+        run: |
+          cp .pio/build/lolin_d32/firmware.bin \
+             FanControl-${{ steps.version.outputs.VERSION }}.bin
+
+      - name: SHA256 checksum
+        run: |
+          sha256sum FanControl-${{ steps.version.outputs.VERSION }}.bin \
+            > FanControl-${{ steps.version.outputs.VERSION }}.bin.sha256
+
+      # Signing matches SmartEVSE-3.5/pio-build.yaml exactly.
+      # Repo secret SECRET_RSA_KEY holds the PEM-encoded RSA private key.
+      # If the secret is unset the step exits 0 silently so forks build cleanly;
+      # the release step then skips the .signed.bin via fail_on_unmatched_files: false.
+      - name: Sign firmware
+        env:
+          super_secret: ${{ secrets.SECRET_RSA_KEY }}
+        run: |
+          if [ -z "$super_secret" ]; then
+            echo "Signing key not set, skipping firmware signing"
+            exit 0
+          fi
+          secret_file=$(mktemp)
+          echo "$super_secret" > "$secret_file"
+          openssl dgst -sign "$secret_file" -keyform PEM -sha256 \
+            -out firmware.sign -binary FanControl-${{ steps.version.outputs.VERSION }}.bin
+          cat firmware.sign FanControl-${{ steps.version.outputs.VERSION }}.bin \
+            > FanControl-${{ steps.version.outputs.VERSION }}.signed.bin
+          rm -f "$secret_file" firmware.sign
+
+      - name: Extract changelog section for this release
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "No changelog entry found for $VERSION — falling back to tag message." > release_notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "FanControl ${{ steps.version.outputs.VERSION }}"
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          fail_on_unmatched_files: false
+          files: |
+            FanControl-${{ steps.version.outputs.VERSION }}.bin
+            FanControl-${{ steps.version.outputs.VERSION }}.bin.sha256
+            FanControl-${{ steps.version.outputs.VERSION }}.signed.bin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
