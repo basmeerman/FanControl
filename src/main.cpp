@@ -5,14 +5,21 @@
 #include "sensor.h"
 #include "fan.h"
 #include "watchdog.h"
+#include "wifi_manager.h"
+#include "webserver.h"
+#include "websocket.h"
+#include "mqtt.h"
 
-// Phase 1: real orchestration. All work happens in FreeRTOS tasks;
-// loop() stays idle per CLAUDE.md (WebSocket + MQTT tasks arrive in
-// later phases and plug into this same scheduler).
+// Phase 4 integration: real orchestration. All work happens in FreeRTOS
+// tasks per CLAUDE.md (no blocking calls in loop(); WS + MQTT in
+// separate tasks). Network/IO tasks pin to core 0 (WiFi/AsyncTCP live
+// there); sensor/fan compute pins to core 1.
 
 namespace {
 
 FanCurve g_curve;
+
+// ----- compute tasks (core 1) -----
 
 void sensorTask(void* /*arg*/) {
   watchdog::subscribeCurrentTask();
@@ -36,12 +43,11 @@ void fanTask(void* /*arg*/) {
     watchdog::reset();
 
     if (sensor::isStale()) {
-      // SW-watchdog policy: engage failsafe regardless of temperature.
       watchdog::handleSensorStall();
     } else {
       const float   t   = sensor::getTemperatureC();
       const uint8_t pct = fan::computeFromTemperature(t, g_curve);
-      fan::setPercent(pct);  // applies min-percent floor
+      fan::setPercent(pct);
     }
 
     vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(1000));
@@ -65,8 +71,6 @@ void watchdogTask(void* /*arg*/) {
 
 void setup() {
   Serial.begin(115200);
-  // Brief wait for USB CDC to come up before the first banner line.
-  // In setup() this is allowed; loop() must stay non-blocking.
   const uint32_t t0 = millis();
   while (!Serial && (millis() - t0) < 500) {
     vTaskDelay(pdMS_TO_TICKS(10));
@@ -79,8 +83,11 @@ void setup() {
   sensor::begin();
   fan::begin();
   watchdog::begin();
+  wifi_manager::begin();
+  webserver::begin();          // creates AsyncWebServer + mounts ElegantOTA + magic URLs
+  ws::attach(webserver::instance());  // mount /ws on the same server
+  mqtt::begin();               // safe even if WiFi not yet up — task handles it
 
-  // Load fan curve once; the fan task reads it every second.
   g_curve = storage::loadFanCurve();
 
   const String   dev      = storage::loadDeviceName();
@@ -89,15 +96,23 @@ void setup() {
   Serial.printf("[FanControl] device=%s  restarts=%u  pwm=%u Hz  min=%u%%\n",
                 dev.c_str(), restarts, fan::currentFrequency(),
                 storage::loadFanMinPercent());
+  Serial.printf("[FanControl] wifi=%s  ip=%s  portal=%s\n",
+                wifi_manager::currentSsid().c_str(),
+                wifi_manager::ipAddress().c_str(),
+                wifi_manager::isPortalActive() ? "active" : "off");
 
-  // Spawn tasks. Priorities: watchdog > sensor > fan > idle.
-  xTaskCreatePinnedToCore(sensorTask,   "sensorTask",   4096, nullptr, 5, nullptr, 1);
-  xTaskCreatePinnedToCore(fanTask,      "fanTask",      4096, nullptr, 4, nullptr, 1);
-  xTaskCreatePinnedToCore(watchdogTask, "watchdogTask", 4096, nullptr, 6, nullptr, 0);
+  // Compute tasks on core 1.
+  xTaskCreatePinnedToCore(sensorTask,         "sensorTask",   4096, nullptr, 5, nullptr, 1);
+  xTaskCreatePinnedToCore(fanTask,            "fanTask",      4096, nullptr, 4, nullptr, 1);
+  // Watchdog stays on core 0 (PRO core), highest priority.
+  xTaskCreatePinnedToCore(watchdogTask,       "watchdogTask", 4096, nullptr, 6, nullptr, 0);
+  // Network tasks on core 0 next to the WiFi/AsyncTCP stack.
+  // Larger stacks for JSON building + TLS handshakes.
+  xTaskCreatePinnedToCore(wifi_manager::task, "wifiTask",     4096, nullptr, 3, nullptr, 0);
+  xTaskCreatePinnedToCore(mqtt::task,         "mqttTask",     6144, nullptr, 3, nullptr, 0);
+  xTaskCreatePinnedToCore(ws::task,           "wsTask",       6144, nullptr, 3, nullptr, 0);
 }
 
 void loop() {
-  // All real work runs in the tasks above. Park loop() indefinitely so
-  // the Arduino loopTask doesn't spin.
   vTaskDelay(portMAX_DELAY);
 }
