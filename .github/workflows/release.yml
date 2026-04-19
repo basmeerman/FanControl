@@ -31,7 +31,7 @@ jobs:
           EOF
 
       - name: Build ESPHome firmware
-        uses: esphome/build-action@v10
+        uses: esphome/build-action@v7
         with:
           yaml-file: fancontrol.yaml
           version: latest

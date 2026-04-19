@@ -26,7 +26,7 @@ jobs:
           EOF
 
       - name: Validate ESPHome config
-        uses: esphome/build-action@v10
+        uses: esphome/build-action@v7
         with:
           yaml-file: fancontrol.yaml
           version: latest
