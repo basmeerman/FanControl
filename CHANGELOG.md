@@ -10,6 +10,21 @@ Release notes for each tagged version are extracted from this file by the
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-04-19
+
+First signed release. `SECRET_RSA_KEY` is now configured, so the release
+workflow attaches `firmware.signed.bin` alongside the unsigned binary
+and SHA-256 checksum. No firmware changes vs. v0.1.0.
+
+### Added
+- GitHub repository secret `SECRET_RSA_KEY` (2048-bit RSA private key)
+  — enables the previously skipped signing step in `release.yml`.
+
+### Fixed
+- (Docs-only in v0.1.0 polish) `release.yml` now correctly strips the
+  `v` prefix from the tag before searching the CHANGELOG, so the
+  release body is populated from the matching section.
+
 ## [0.1.0] - 2026-04-19
 
 First end-to-end release. Boots, drives the fan curve from DHT22 readings,
@@ -103,5 +118,6 @@ SUCCESS, `pio test -e native` 7/7 PASSED.
 - `pio run -e lolin_d32` → SUCCESS, RAM 15.0 %, flash 54.5 %.
 - `pio test -e native` → 7 / 7 PASSED.
 
-[Unreleased]: https://github.com/basmeerman/FanControl/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/basmeerman/FanControl/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/basmeerman/FanControl/releases/tag/v0.1.1
 [0.1.0]: https://github.com/basmeerman/FanControl/releases/tag/v0.1.0
