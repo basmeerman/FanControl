@@ -10,6 +10,12 @@ Release notes for each tagged version are extracted from this file by the
 
 ## [Unreleased]
 
+### Added
+- `SECURITY.md` with release-verification recipe and key-rotation policy.
+- `docs/signing_public_key.pem` — public half of the release signing key,
+  committed so users can verify `.signed.bin` without coordination.
+- README "Verifying releases" section linking to the above.
+
 ## [0.1.1] - 2026-04-19
 
 First signed release. `SECRET_RSA_KEY` is now configured, so the release
