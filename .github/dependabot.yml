@@ -1,12 +1,7 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    labels:
-      - "ci-cd"
-
+  # v0.2.0 migrated to ESPHome; no Python / pip manifests in the repo.
+  # ESPHome version is pinned inside the esphome/build-action@v7 action call.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

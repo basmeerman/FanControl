@@ -10,6 +10,12 @@ Release notes for each tagged version are extracted from this file by the
 
 ## [Unreleased]
 
+### Fixed
+- `.github/dependabot.yml`: dropped the `pip` ecosystem. v0.2.0 removed
+  `platformio.ini` and there are no Python manifests left, so Dependabot's
+  pip updater was erroring with "No files found in /" on every run.
+  `github-actions` updates continue as before.
+
 ## [0.2.0] - 2026-04-19
 
 **Architecture switch: custom PlatformIO + Arduino C++ → ESPHome.**
