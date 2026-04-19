@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository status
 
-This directory currently contains **only the project plan** — `ACCURUIMTE_VENTILATIE_PLAN.md`. No source code, `platformio.ini`, or git history exists yet. The first implementation sessions will scaffold a PlatformIO project from scratch following that plan.
+This directory currently contains **only the project plan** — `PROJECT_PLAN.md`. No source code, `platformio.ini`, or git history exists yet. The first implementation sessions will scaffold a PlatformIO project from scratch following that plan.
 
-`ACCURUIMTE_VENTILATIE_PLAN.md` is the **single source of truth** (v1.1). Read it before making structural decisions — especially sections 3 (project structure), 5 (WebSocket protocol), 6 (MQTT topics), and 7.3 (code quality rules).
+`PROJECT_PLAN.md` is the **single source of truth** (v1.2). Read it before making structural decisions — especially sections 3 (project structure), 5 (WebSocket protocol), 6 (MQTT topics), and 7.3 (code quality rules).
 
 ## Project at a glance
 
@@ -41,6 +41,8 @@ These come from plan §7.3 and the agent briefs — violating them breaks the Q1
 - **Watchdog:** ESP32 hardware TWDT via `esp_task_wdt` + software watchdog that detects sensor stalls within 60s. Auto-restart is rate-limited to 1× per 5 minutes via an NVS cooldown timestamp; the restart counter is persistent.
 - **Webserver is a single `index.html` embedded as a PROGMEM string** in `index_html.h`. No external CDN deps, vanilla JS/CSS only, dark theme, accordion sections. The four sections (Status / Ventilation / Network+MQTT / System) are fixed by the plan.
 - **WebSocket push cadence is 2s** (ESP32 → browser, JSON shape in plan §5). Browser → ESP32 uses `{"type": "set_config", ...}` — do not invent new message types without updating the plan.
+- **Fan PWM frequency is runtime-tunable** (NVS-backed, 1000–5000 Hz, default 1 kHz per Ruck datasheet). Use `ledcSetup()` / `ledcChangeFrequency()` to apply changes without reboot. Always clamp to spec range in firmware as a second line of defense.
+- **Release signing matches SmartEVSE-3.5 exactly:** `openssl dgst -sign -keyform PEM -sha256` against firmware.bin, signature *prepended* to bin → `firmware.signed.bin`. Repo secret `SECRET_RSA_KEY` holds the PEM private key. Step skips silently when the secret is missing so forks build cleanly.
 - **MQTT:** birth (`online`) + last will (`offline`, `retain=true`) on `{prefix}/status`. HA discovery under `homeassistant/` prefix. Reconnect uses exponential backoff and must never block the main loop. All topics live under a user-configurable prefix stored in NVS.
 - **No circular dependencies between modules.** Every module must be testable in isolation (this is why `test/` has per-module subfolders).
 
@@ -68,7 +70,7 @@ Plan §8 defines six specialist personas (`firmware-engineer`, `webserver-engine
 
 ## Language note
 
-The plan is in Dutch. Comments, commit messages, and CHANGELOG entries in the plan's examples are Dutch; user-facing strings (web UI, MQTT labels) follow the plan's Dutch wording. Code identifiers and log output are English. Match this convention unless the user says otherwise.
+The plan is in Dutch. **All code, log output, web UI labels, MQTT labels, HA entity names, commit messages, and CHANGELOG entries are English** (v1.2 decision). The plan stays Dutch as a reference document; everything user-facing or runtime is English.
 
 ## Test matrix
 

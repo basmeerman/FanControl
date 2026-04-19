@@ -131,6 +131,21 @@ bool saveFanMinPercent(uint8_t pct) {
   });
 }
 
+uint32_t loadFanPwmFreqHz() {
+  uint32_t hz = withRO([](Preferences& p) {
+    return p.getUInt(nvs_key::FAN_PWM_FREQ, FAN_PWM_FREQ_DEFAULT_HZ);
+  });
+  if (hz < FAN_PWM_FREQ_MIN_HZ) hz = FAN_PWM_FREQ_MIN_HZ;
+  if (hz > FAN_PWM_FREQ_MAX_HZ) hz = FAN_PWM_FREQ_MAX_HZ;
+  return hz;
+}
+bool saveFanPwmFreqHz(uint32_t hz) {
+  if (hz < FAN_PWM_FREQ_MIN_HZ || hz > FAN_PWM_FREQ_MAX_HZ) return false;
+  return withRW("fan_pwm_freq", [&](Preferences& p) {
+    return p.putUInt(nvs_key::FAN_PWM_FREQ, hz) == sizeof(uint32_t);
+  });
+}
+
 uint32_t loadSensorIntervalMs() {
   return withRO([](Preferences& p) {
     return p.getUInt(nvs_key::SENSOR_INT_MS, SENSOR_READ_INTERVAL_MS);

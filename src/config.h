@@ -17,9 +17,13 @@ static constexpr uint8_t PIN_STATUS_LED   = 5;
 static constexpr uint8_t PIN_FACTORY_RESET = 0;
 
 // ---------- Fan PWM ----------
-static constexpr uint8_t  FAN_LEDC_CHANNEL = 0;
-static constexpr uint32_t FAN_PWM_FREQ_HZ  = 2000;   // 1–5 kHz range per spec
-static constexpr uint8_t  FAN_PWM_RES_BITS = 10;     // 0..1023
+// Frequency default 1 kHz (Ruck EM 125L EC 02 datasheet: 5–10 V, 1–5 kHz).
+// Runtime-tunable via web UI; clamp [PWM_FREQ_MIN_HZ, PWM_FREQ_MAX_HZ].
+static constexpr uint8_t  FAN_LEDC_CHANNEL       = 0;
+static constexpr uint32_t FAN_PWM_FREQ_DEFAULT_HZ = 1000;
+static constexpr uint32_t FAN_PWM_FREQ_MIN_HZ    = 1000;
+static constexpr uint32_t FAN_PWM_FREQ_MAX_HZ    = 5000;
+static constexpr uint8_t  FAN_PWM_RES_BITS       = 10;   // 0..1023
 static constexpr uint8_t  FAN_MIN_PERCENT_DEFAULT = 10;
 static constexpr uint8_t  FAN_FAILSAFE_PERCENT    = 100;
 
@@ -68,6 +72,7 @@ namespace nvs_key {
   static constexpr char FAN_CURVE_P[]    = "fan_curve_p";   // blob: uint8_t[5]
   static constexpr char ALARM_TEMP[]     = "alarm_temp";
   static constexpr char FAN_MIN_PCT[]    = "fan_min_pct";
+  static constexpr char FAN_PWM_FREQ[]   = "fan_pwm_freq";
   static constexpr char SENSOR_INT_MS[]  = "sensor_int";
   static constexpr char RESTART_COUNT[]  = "restart_cnt";
   static constexpr char LAST_RESTART_MS[] = "last_restart";

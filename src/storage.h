@@ -48,6 +48,9 @@ namespace storage {
   uint8_t loadFanMinPercent();
   bool    saveFanMinPercent(uint8_t pct);
 
+  uint32_t loadFanPwmFreqHz();
+  bool     saveFanPwmFreqHz(uint32_t hz);
+
   uint32_t loadSensorIntervalMs();
   bool     saveSensorIntervalMs(uint32_t ms);
 

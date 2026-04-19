@@ -1,4 +1,4 @@
-# AccuRuimte Ventilatie Controller — Projectplan v1.1
+# FanControl — Project Plan v1.2
 
 > **Status:** Klaar voor uitvoering in Claude Code / CLI  
 > **Gebaseerd op:** SmartEVSE-3.5 architectuur (basmeerman/dingo35)  
@@ -17,7 +17,7 @@ Een zelfstandige ventilatie controller voor een thuisaccu ruimte (Victron Multip
 ## 2. Featurelijst (definitief)
 
 ### F1 — Kern ventilatiefunctie
-- F1.1 PWM ventilator sturing (1-5 kHz, 0–100%, via level shifter + MT3608 naar 9V)
+- F1.1 PWM ventilator sturing (default 1 kHz, runtime instelbaar 1–5 kHz via web UI, 0–100%, via level shifter + MT3608 naar 9V). Datasheet Ruck EM 125L EC 02: PWM 5–10 V, 1–5 kHz.
 - F1.2 Temperatuurgestuurde regeling via DHT22 (lineaire interpolatie)
 - F1.3 Luchtvochtigheidsmonitoring
 - F1.4 Instelbare temperatuurdrempels (via webinterface, opgeslagen in NVS)
@@ -48,7 +48,7 @@ Een zelfstandige ventilatie controller voor een thuisaccu ruimte (Victron Multip
 - F3.9 Watchdog herstartteller
 
 **Sectie 2 — Ventilatie instellingen (opvouwbaar, SmartEVSE stijl)**
-- F3.10 Temperatuurdrempels instellen (T1..T4 met bijbehorend PWM%)
+- F3.10 Temperatuurdrempels instellen (T1..T4 met bijbehorend PWM%) + PWM frequentie (1000–5000 Hz, stap 100 Hz)
 - F3.11 Alarmtemperatuur instellen
 - F3.12 Minimale ventilatorsnelheid instellen
 - F3.13 Sensoruitleesinterval instellen
@@ -91,7 +91,7 @@ Een zelfstandige ventilatie controller voor een thuisaccu ruimte (Victron Multip
 - F5.1 Verbinding via opgeslagen credentials (NVS)
 - F5.2 Captive portal AP mode als geen credentials beschikbaar
 - F5.3 Automatisch herverbinden bij WiFi verlies
-- F5.4 mDNS hostname (bijv. `accuruimte.local`)
+- F5.4 mDNS hostname (bijv. `fancontrol.local`)
 - F5.5 Statisch IP optioneel instelbaar
 
 ### F6 — OTA Updates
@@ -113,7 +113,7 @@ Een zelfstandige ventilatie controller voor een thuisaccu ruimte (Victron Multip
 ## 3. Projectstructuur (PlatformIO)
 
 ```
-accuruimte-ventilatie/
+FanControl/
 ├── platformio.ini
 ├── README.md
 ├── CHANGELOG.md
@@ -154,15 +154,15 @@ board_build.partitions = min_spiffs.csv
 
 ; OTA via CLI
 upload_protocol = espota
-upload_port = accuruimte.local
+upload_port = fancontrol.local
 upload_flags = --auth=changeme
 
 lib_deps =
   knolleary/PubSubClient@^2.8
   adafruit/DHT sensor library@^1.4.6
   adafruit/Adafruit Unified Sensor@^1.1.14
-  me-no-dev/ESP Async WebServer@^1.2.3
-  me-no-dev/AsyncTCP@^1.1.1
+  esp32async/ESPAsyncWebServer@^3.7.0     ; v1.2: maintained fork (me-no-dev/* removed from registry)
+  esp32async/AsyncTCP@^3.4.0
   ayushsharma82/ElegantOTA@^3.1.0
   bblanchon/ArduinoJson@^7.0.0
 
@@ -403,13 +403,13 @@ from other agents before integration into main.cpp.
 
 ```bash
 # Via GitHub CLI (gh) — uitvoeren in Claude Code CLI
-gh repo create accuruimte-ventilatie \
+gh repo create FanControl \
   --public \
   --description "ESP32 ventilatie controller voor thuisaccu ruimte — Victron/JK BMS" \
   --license MIT \
   --clone
 
-cd accuruimte-ventilatie
+cd FanControl
 ```
 
 **Repository instellingen:**
@@ -453,7 +453,7 @@ gh label create "question"    --color "d876e3" --description "Vraag of discussie
 ### 10.4 Repository structuur (root niveau)
 
 ```
-accuruimte-ventilatie/
+FanControl/
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml                   # Build + test op elke push/PR
@@ -583,12 +583,32 @@ jobs:
       - name: Rename binary
         run: |
           cp .pio/build/lolin_d32/firmware.bin \
-             accuruimte-ventilatie-${{ steps.version.outputs.VERSION }}.bin
+             FanControl-${{ steps.version.outputs.VERSION }}.bin
 
       - name: SHA256 checksum
         run: |
-          sha256sum accuruimte-ventilatie-${{ steps.version.outputs.VERSION }}.bin \
-            > accuruimte-ventilatie-${{ steps.version.outputs.VERSION }}.bin.sha256
+          sha256sum FanControl-${{ steps.version.outputs.VERSION }}.bin \
+            > FanControl-${{ steps.version.outputs.VERSION }}.bin.sha256
+
+      # v1.2: signing matches SmartEVSE-3.5/pio-build.yaml exactly.
+      # Repo secret SECRET_RSA_KEY holds the PEM-encoded RSA private key.
+      # If the secret is missing the step skips silently (so forks build cleanly).
+      - name: Sign firmware
+        env:
+          super_secret: ${{ secrets.SECRET_RSA_KEY }}
+        run: |
+          if [ -z "$super_secret" ]; then
+            echo "Signing key not set, skipping firmware signing"
+            exit 0
+          fi
+          secret_file=$(mktemp)
+          echo "$super_secret" > "$secret_file"
+          openssl dgst -sign "$secret_file" -keyform PEM -sha256 \
+            -out firmware.sign -binary \
+            FanControl-${{ steps.version.outputs.VERSION }}.bin
+          cat firmware.sign FanControl-${{ steps.version.outputs.VERSION }}.bin \
+            > FanControl-${{ steps.version.outputs.VERSION }}.signed.bin
+          rm -f "$secret_file" firmware.sign
 
       - name: Extract changelog voor deze release
         run: |
@@ -599,13 +619,14 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "AccuRuimte Ventilatie ${{ steps.version.outputs.VERSION }}"
+          name: "FanControl ${{ steps.version.outputs.VERSION }}"
           body_path: release_notes.md
           draft: false
           prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
           files: |
-            accuruimte-ventilatie-${{ steps.version.outputs.VERSION }}.bin
-            accuruimte-ventilatie-${{ steps.version.outputs.VERSION }}.bin.sha256
+            FanControl-${{ steps.version.outputs.VERSION }}.bin
+            FanControl-${{ steps.version.outputs.VERSION }}.bin.sha256
+            FanControl-${{ steps.version.outputs.VERSION }}.signed.bin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -765,6 +786,19 @@ pio init --board lolin_d32 --ide vscode
 
 ## 14. Versie & Changelog
 
+**v1.2.0** — FanControl rename + uitvoeringsbesluiten vastgelegd
+- Project hernoemd: `accuruimte-ventilatie` → `FanControl` (mDNS, MQTT prefix, hostname, repo allemaal `fancontrol`)
+- F1.1 PWM frequentie runtime instelbaar in web UI (1000–5000 Hz, default 1 kHz; was hardcoded)
+- F3.10 PWM frequentie toegevoegd aan ventilatie-instellingen UI
+- §4 platformio.ini: AsyncWebServer fork → `esp32async/ESPAsyncWebServer` + `esp32async/AsyncTCP` (oude `me-no-dev/*` packages zijn uit de PIO registry)
+- §11.2 release.yml: firmware signing toegevoegd identiek aan SmartEVSE-3.5/pio-build.yaml (RSA + openssl SHA256, secret `SECRET_RSA_KEY`, produceert `firmware.signed.bin`)
+- Web UI taal: alle labels Engels (was: Nederlands met Engelse identifiers)
+- Captive portal SSID: `FanControl-Setup`, geen wachtwoord
+- OTA: `changeme` placeholder → forceer wijziging via web UI banner bij eerste boot
+- MQTT: TLS support optioneel via web UI (zoals SmartEVSE), default plain TCP
+- HA discovery: één HA "device" met `fancontrol-<MAC suffix>` als unique ID, kindentities voor temp/humidity/fan/alarms
+- GPIO map vastgelegd: DHT22=4, FAN_PWM=25, STATUS_LED=5, FACTORY_RESET=0
+
 **v1.1.0** — GitHub repo + CI/CD toegevoegd
 - Secties 10 + 11: GitHub repo setup en CI/CD pipeline
 - Agent 6 devops-engineer toegevoegd
@@ -779,5 +813,5 @@ pio init --board lolin_d32 --ide vscode
 
 ---
 
-*Dit document is de single source of truth voor het AccuRuimte Ventilatie Controller project.*  
+*Dit document is de single source of truth voor het FanControl Controller project.*  
 *Bewaar dit bestand in de root van de repository als `PROJECT_PLAN.md`.*

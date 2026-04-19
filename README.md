@@ -13,7 +13,7 @@ embedded web UI (WebSocket push) and integrates with Home Assistant through MQTT
 Phase 1 scaffold — `platformio.ini`, `config.h`, `version.h`, `storage.cpp` (NVS wrapper) in place.
 Fan/sensor/watchdog/MQTT/webserver modules follow in phases 2–4.
 
-See [`ACCURUIMTE_VENTILATIE_PLAN.md`](ACCURUIMTE_VENTILATIE_PLAN.md) for the full project plan (v1.1 —
+See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the full project plan (v1.2 —
 feature list, test matrix, agent roles, CI/CD layout) and [`CLAUDE.md`](CLAUDE.md) for architecture
 constraints future Claude Code sessions must respect.
 
