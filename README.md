@@ -73,6 +73,22 @@ fancontrol/status                           online|offline
 HA discovery is republished on every (re)connect under `homeassistant/{component}/{node_id}_*`.
 TLS is enabled automatically when the broker port is `8883` (insecure mode, matches SmartEVSE).
 
+## Verifying releases
+
+Every tagged release ships `firmware.bin` + SHA-256 + `firmware.signed.bin`.
+Verify signature with the public key committed at
+[`docs/signing_public_key.pem`](docs/signing_public_key.pem):
+
+```bash
+dd if=FanControl-vX.Y.Z.signed.bin of=firmware.sign bs=1 count=256 status=none
+dd if=FanControl-vX.Y.Z.signed.bin of=firmware.bin  bs=1 skip=256  status=none
+openssl dgst -verify docs/signing_public_key.pem -keyform PEM -sha256 \
+  -signature firmware.sign firmware.bin
+# → Verified OK
+```
+
+Full recipe + key rotation policy in [`SECURITY.md`](SECURITY.md).
+
 ## Documentation
 
 - [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — v1.2, the single source of truth (features, test
