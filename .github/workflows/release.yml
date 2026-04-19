@@ -79,9 +79,11 @@ jobs:
       - name: Extract changelog section for this release
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
-          awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md > release_notes.md
+          # Tag is vX.Y.Z; Keep-a-Changelog headings are [X.Y.Z] (no v prefix).
+          VERSION_NO_V="${VERSION#v}"
+          awk "/^## \[$VERSION_NO_V\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md > release_notes.md
           if [ ! -s release_notes.md ]; then
-            echo "No changelog entry found for $VERSION — falling back to tag message." > release_notes.md
+            echo "No changelog entry found for $VERSION_NO_V — falling back to tag message." > release_notes.md
           fi
 
       - name: Create GitHub Release
