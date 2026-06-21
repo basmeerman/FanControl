@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Seed a dummy secrets.yaml so `esphome config` resolves !secret
       # references during the lint. Real secrets live in the maintainer's
