@@ -20,14 +20,14 @@ HA integration) is declared there.
 - **Board:** LOLIN D32 (ESP32-WROOM-32)
 - **Sensor:** DHT22 with onboard 10 kΩ pull-up
 - **Fan:** Ruck EM 125L EC 02 — PWM input 5–10 V, 1–5 kHz (datasheet)
-- **PWM path:** ESP32 GPIO 25 → TXS0108E / 74HCT125 level shifter → MT3608 boost → 9 V PWM line
+- **PWM path:** ESP32 GPIO 16 → TXS0108E / 74HCT125 level shifter → MT3608 boost → 9 V PWM line
 
 Pin map, locked in `fancontrol.yaml`:
 
 | GPIO | Role | Notes |
 |---|---|---|
 | 4 | DHT22 data | module has its own pull-up; firmware treats pin as plain input |
-| 25 | Fan PWM (LEDC ch0) | default 1 kHz, 10-bit auto |
+| 16 | Fan PWM (LEDC ch0) | default 1 kHz, 10-bit auto |
 | 5 | Status LED | onboard LOLIN D32 LED, active LOW |
 | 0 | Boot button | reserved for factory reset long-press (not yet wired in YAML) |
 

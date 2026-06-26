@@ -19,7 +19,7 @@ Everything runtime-visible lives in a single file: [`fancontrol.yaml`](fancontro
 ## 2. Features
 
 ### F1 — Ventilation core
-- F1.1 PWM output on GPIO 25. Default 1 kHz (Ruck EM 125L EC 02 datasheet:
+- F1.1 PWM output on GPIO 16. Default 1 kHz (Ruck EM 125L EC 02 datasheet:
   PWM 5–10 V, 1–5 kHz), runtime-tunable via HA / web UI `number` component
   (clamped 1000–5000 Hz, 100 Hz step).
 - F1.2 Temperature-driven fan speed using a 5-point piecewise-linear curve
