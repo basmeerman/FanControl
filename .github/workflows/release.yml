@@ -28,6 +28,9 @@ jobs:
           wifi_ssid: "ReleaseDummyNet"
           wifi_password: "release-dummy-password"
           ota_password: "release-dummy-ota-password"
+          mqtt_host: "192.0.2.1"
+          mqtt_user: "release-dummy-user"
+          mqtt_password: "release-dummy-password"
           EOF
 
       - name: Build ESPHome firmware
