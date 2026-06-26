@@ -10,6 +10,21 @@ Release notes for each tagged version are extracted from this file by the
 
 ## [Unreleased]
 
+### Changed
+- Home Assistant transport switched from the native ESPHome **`api:` to
+  `mqtt:`** in `fancontrol.yaml`. The encrypted native-API block is now
+  commented out and the MQTT block (broker auto-discovery, `fancontrol`
+  topic prefix, online/offline birth & will messages) is enabled. Set
+  `mqtt_host` (bare IP, **no port** — the port is the separate `port:` key),
+  `mqtt_user`, and `mqtt_password` in `secrets.yaml`. Revert by swapping the
+  two blocks back. Verified on hardware: device connects to the broker and
+  publishes temperature, humidity, fan speed, and diagnostics.
+- Fan PWM output moved from **GPIO 25 → GPIO 16** in `fancontrol.yaml` to
+  match the assembled hardware. GPIO 16 is free on the plain LOLIN D32
+  (WROOM-32, no PSRAM); only the D32 *Pro* (WROVER) reserves 16/17 for PSRAM.
+  Pin map updated in `CLAUDE.md`, `PROJECT_PLAN.md`, and
+  `docs/wiring_diagram.md`.
+
 ### Fixed
 - `.github/dependabot.yml`: dropped the `pip` ecosystem. v0.2.0 removed
   `platformio.ini` and there are no Python manifests left, so Dependabot's

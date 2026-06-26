@@ -45,11 +45,12 @@ logger:
   level: INFO
   baud_rate: 115200
 
-# Prefer ESPHome native API for Home Assistant (encrypted, fast). MQTT
-# left optional below for users who want to keep the v0.1.x topic shape.
-api:
-  encryption:
-    key: !secret api_encryption_key
+# Native API disabled for this deployment — Home Assistant integration is
+# via MQTT only (see the mqtt: block below). Re-enable by uncommenting and
+# commenting out mqtt: to go back to the encrypted native-API transport.
+# api:
+#   encryption:
+#     key: !secret api_encryption_key
 
 ota:
   - platform: esphome
@@ -68,24 +69,24 @@ captive_portal:
 mdns:
   # Advertises the device as fancontrol.local on the LAN.
 
-# Optional MQTT. Uncomment + fill secrets.yaml to publish to an external
-# broker in addition to (or instead of) the native API.
-# mqtt:
-#   broker: !secret mqtt_host
-#   port: 1883
-#   username: !secret mqtt_user
-#   password: !secret mqtt_password
-#   topic_prefix: fancontrol
-#   discovery: true
-#   discovery_retain: true
-#   birth_message:
-#     topic: fancontrol/status
-#     payload: online
-#     retain: true
-#   will_message:
-#     topic: fancontrol/status
-#     payload: offline
-#     retain: true
+# MQTT transport — Home Assistant integration via broker auto-discovery.
+# Fill mqtt_host / mqtt_user / mqtt_password in secrets.yaml.
+mqtt:
+  broker: !secret mqtt_host
+  port: 1883
+  username: !secret mqtt_user
+  password: !secret mqtt_password
+  topic_prefix: fancontrol
+  discovery: true
+  discovery_retain: true
+  birth_message:
+    topic: fancontrol/status
+    payload: online
+    retain: true
+  will_message:
+    topic: fancontrol/status
+    payload: offline
+    retain: true
 
 web_server:
   port: 80
@@ -252,7 +253,7 @@ number:
 
 output:
   - platform: ledc
-    pin: GPIO25
+    pin: GPIO16
     id: fan_pwm_output
     frequency: 1000Hz
     channel: 0

@@ -16,7 +16,7 @@
 | ESP32 GPIO | Role | Direction | Notes |
 |---|---|---|---|
 | **4** | `PIN_DHT22` | Input (pulled up on module) | Avoids ADC2 (conflicts with WiFi). |
-| **25** | `PIN_FAN_PWM` | LEDC PWM output | Channel `FAN_LEDC_CHANNEL = 0`, default 1 kHz, 10-bit resolution. Drives the level-shifter LV side. |
+| **16** | `PIN_FAN_PWM` | LEDC PWM output | Channel `FAN_LEDC_CHANNEL = 0`, default 1 kHz, 10-bit resolution. Drives the level-shifter LV side. |
 | **5** | `PIN_STATUS_LED` | Output (active LOW) | Onboard LED. Reserved — not yet driven by firmware. |
 | **0** | `PIN_FACTORY_RESET` | Input (boot button) | Hold at boot to trigger factory reset (to be wired into `storage::factoryReset()` as a future hook — currently only web UI calls it). |
 | 3V3, GND, VIN (5 V) | Power rails | — | VIN accepts 5 V USB. 3V3 from the onboard regulator feeds the DHT22 module. |
@@ -24,7 +24,7 @@
 ## Rationale
 
 - **GPIO 4 for DHT22**: input-capable, outside the ADC2 block, not a strapping pin. Widely used for DHT sensors in ESP32 examples.
-- **GPIO 25 for fan PWM**: LEDC-capable, not a strapping pin, no ADC2 conflict. Next to the DAC pins but we're using LEDC (digital PWM) not DAC.
+- **GPIO 16 for fan PWM**: LEDC-capable, not a strapping pin, not an ADC pin. Free on the plain LOLIN D32 (ESP32-WROOM-32, no PSRAM). Note: GPIO 16/17 are reserved for PSRAM on the LOLIN D32 *Pro* (WROVER) — not applicable to this board.
 - **Avoid GPIO 12**: strapping pin (MTDI); pulled HIGH during boot can brick flash in some boards.
 - **Avoid GPIO 2 / 15**: boot-time strapping; fine for outputs after boot but safer to leave alone.
 
@@ -35,7 +35,7 @@
 │        LOLIN D32         │
 │                          │
 │  GPIO 4  ──── DHT22 DAT  (module has built-in 10 kΩ pull-up to VCC)
-│  GPIO 25 ──── LevelShift A1 (LV) ── LevelShift B1 (HV) ── Fan PWM+
+│  GPIO 16 ──── LevelShift A1 (LV) ── LevelShift B1 (HV) ── Fan PWM+
 │  3V3     ──── DHT22 VCC, LevelShift LV
 │  GND     ──── DHT22 GND, LevelShift GND (both sides), Fan GND,
 │               MT3608 input GND, 5 V PSU GND
