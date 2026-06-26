@@ -1,17 +1,18 @@
 # FanControl
 
-ESP32 ventilation controller for a home battery room (Victron Multiplus / JK BMS / 6× 48 V LFP).
-Drives a Ruck EM 125L EC 02 fan via PWM based on DHT22 temperature, integrates with Home
-Assistant over the native ESPHome API, exposes a built-in web dashboard on `fancontrol.local`.
+Generic Failsafe PWM Ventilation controller based on temperature. 
 
-- **Hardware:** LOLIN D32 (ESP32) + DHT22 + Ruck EM 125L EC 02 (PWM via level-shifter + MT3608 → 9 V)
+It drives any PWM steered ventilator, for me specifically it drives a Ruck EM 125L EC 02 fan via PWM based LOLIN D32 (ESP32) on DHT22 temperature, integrates with Home
+Assistant over MQTT and exposes a built-in web dashboard on `fancontrol.local`.
+
+- **Hardware:** LOLIN D32 (ESP32) + DHT22 + Ruck EM 125L EC 02 (PWM via level-shifter)
 - **PWM:** default 1 kHz, runtime-tunable 1–5 kHz (per Ruck datasheet)
 - **Framework:** [ESPHome](https://esphome.io) — YAML-driven firmware, compiled on demand
 - **Firmware size:** ~945 KB (under the 1.5 MB CI gate)
 
 ## Quick start
 
-Prerequisites: Python 3.10+, [`pipx`](https://pipx.pypa.io), and a USB-C cable.
+Prerequisites: Python 3.10+, [`pipx`](https://pipx.pypa.io), and a micro-USB cable.
 
 ```bash
 # 1. Install ESPHome
