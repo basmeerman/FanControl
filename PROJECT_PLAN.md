@@ -63,6 +63,29 @@ native API and leave MQTT off.
 ### F5 — OTA updates
 - `ota:` platform esphome, password-gated (`secrets.yaml` → `ota_password`).
 - SHA-256 handshake; no RSA signing (see *History* below and `SECURITY.md`).
+- **Push-based, not auto-pull.** The device never polls GitHub; there is no
+  `dashboard_import` / `http_request` update platform. You push firmware to it
+  from the LAN.
+
+**Update procedure (after first boot — device is on WiFi):**
+
+```bash
+esphome config fancontrol.yaml                          # lint
+esphome compile fancontrol.yaml                         # build
+esphome run fancontrol.yaml --device fancontrol.local   # compile + OTA over WiFi
+esphome logs fancontrol.yaml --device fancontrol.local  # verify boot
+```
+
+`esphome run` compiles and uploads in one step; the device authenticates with
+`ota_password`, reboots, and `restart_counter` increments. Alternatives: the
+web UI at `http://fancontrol.local` (OTA upload button, feed it the built
+`.ota.bin`), or USB fallback `--device /dev/cu.wchusbserial10` if OTA is broken
+or the device won't join WiFi.
+
+> **Do not flash the GitHub Release `.bin`.** Release artifacts are CI-built
+> with dummy secrets and will not join the network — they are reference /
+> reproducibility artifacts only. Always build locally against the real
+> `secrets.yaml` (gitignored; backed up in 1Password).
 
 ### F6 — Persistence
 `globals` with `restore_value: true` for the boot counter. All `number`

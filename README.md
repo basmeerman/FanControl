@@ -32,6 +32,36 @@ esphome run fancontrol.yaml
 If WiFi credentials are wrong or missing, the device falls back to an open AP
 named **`FanControl-Setup`** at `192.168.4.1` — connect, configure, save.
 
+## Updating the device
+
+After the first USB flash the device is on WiFi, so every later update goes
+**over the air** — no cable needed:
+
+```bash
+# Build and push the new firmware over WiFi (password-gated OTA)
+esphome compile fancontrol.yaml
+esphome run fancontrol.yaml --device fancontrol.local
+
+# Confirm it rebooted and reconnected
+esphome logs fancontrol.yaml --device fancontrol.local
+```
+
+The device authenticates the upload with `ota_password`, reboots into the new
+build, and bumps its restart counter. You can also upload a locally-built
+`.ota.bin` through the web dashboard at `http://fancontrol.local`.
+
+**If OTA fails** (or the device can't join WiFi / is in safe mode), reflash over
+USB:
+
+```bash
+esphome run fancontrol.yaml --device /dev/cu.wchusbserial10   # adjust the serial port
+```
+
+> ⚠️ **Don't flash the binaries attached to a GitHub Release.** They are built
+> in CI with placeholder secrets and will not connect to your WiFi. Always
+> build locally against your own `secrets.yaml`. GitHub Release artifacts exist
+> for reference and reproducibility only.
+
 ## Home Assistant integration
 
 Once on the network, HA auto-discovers the device via the ESPHome integration.
