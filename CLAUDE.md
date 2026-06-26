@@ -52,6 +52,32 @@ their SHA-256 checksums.
 password + checksum. Pre-v0.2.0 releases (v0.1.0, v0.1.1) are still RSA-signed
 and verifiable against `docs/signing_public_key.pem`; see [`SECURITY.md`](SECURITY.md).
 
+## Updating the device
+
+After first boot the device is on WiFi, so updates go **OTA over the network**
+— no USB needed.
+
+```bash
+esphome config fancontrol.yaml                 # lint
+esphome compile fancontrol.yaml                # build (lambdas fail here, not at config)
+esphome run fancontrol.yaml --device fancontrol.local   # compile + OTA push (mDNS)
+esphome logs fancontrol.yaml --device fancontrol.local  # confirm it came back up
+```
+
+`esphome run` compiles and uploads in one step; the device authenticates the
+upload with `ota_password` from `secrets.yaml`, reboots, and `restart_counter`
+increments. The web UI (`http://fancontrol.local`) also accepts an OTA upload
+of the built `.ota.bin`.
+
+- **USB fallback** (OTA broken, or device won't join WiFi / is in safe mode):
+  `esphome run fancontrol.yaml --device /dev/cu.wchusbserial10`.
+- **Never flash the GitHub Release `.bin`.** Release artifacts are built in CI
+  with **dummy secrets** (placeholder WiFi/MQTT), so they will not join the
+  network. Always build locally against the real `secrets.yaml`. Releases are
+  reference/reproducibility artifacts only.
+- `secrets.yaml` is gitignored and lives locally; the backup is in the
+  maintainer's 1Password. Restore it there before building on a fresh machine.
+
 ## Architecture constraints (enforce these)
 
 Because the project lives in one YAML file, "architecture" is mostly about
