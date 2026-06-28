@@ -20,8 +20,8 @@ pipx install esphome
 
 # 2. Configure secrets
 cp secrets.yaml.example secrets.yaml
-# Edit secrets.yaml — fill in WiFi creds and pick strong passwords
-# (generate an API encryption key with: openssl rand -base64 32)
+# Edit secrets.yaml — fill in WiFi creds, the OTA password, and the
+# MQTT broker host/user/password (mqtt_host is a bare IP — no port)
 
 # 3. Plug the LOLIN D32 into USB, then flash the first time over USB:
 esphome run fancontrol.yaml
@@ -65,8 +65,10 @@ esphome run fancontrol.yaml --device /dev/cu.wchusbserial10   # adjust the seria
 
 ## Home Assistant integration
 
-Once on the network, HA auto-discovers the device via the ESPHome integration.
-No manual MQTT configuration needed. Exposed entities:
+The device publishes to an MQTT broker (configured via `mqtt_host` / `mqtt_user`
+/ `mqtt_password` in `secrets.yaml`). With MQTT auto-discovery enabled, Home
+Assistant picks up the entities automatically once the device connects to the
+broker — no manual entity setup needed. Exposed entities:
 
 | Entity | Type | Notes |
 |---|---|---|
