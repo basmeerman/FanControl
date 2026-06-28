@@ -10,6 +10,17 @@ Release notes for each tagged version are extracted from this file by the
 
 ## [Unreleased]
 
+### Added
+- **Operating modes (Auto / Manual).** New `Operating Mode` select switches
+  between the existing temperature-driven curve (**Auto**) and a new **Manual**
+  mode with a `Manual Fan` on/off switch and a `Manual Fan Speed` (0–100 %)
+  number. A single resolved-speed template sensor drives the PWM in both modes,
+  so `Fan Speed` always reflects the actual duty. Safety failsafes (NaN read,
+  >60 s sensor stall → 100 %) still apply in **all** modes, including Manual.
+  Mode + manual controls are grouped on the web UI via `web_server`
+  sorting groups (the stock UI can't hide entities by state, so they are shown
+  but inert in Auto).
+
 ### Changed
 - Home Assistant transport switched from the native ESPHome **`api:` to
   `mqtt:`** in `fancontrol.yaml`. The encrypted native-API block is now

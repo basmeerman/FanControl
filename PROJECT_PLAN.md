@@ -92,6 +92,21 @@ or the device won't join WiFi.
 components with `restore_value: true` for user-tunable settings. No manual
 NVS wrapping needed.
 
+### F7 — Operating modes
+- **Operating Mode** `select` (`Auto` / `Manual`, persisted). Default `Auto`.
+- **Auto** — unchanged: temperature-driven 5-point fan curve, clamped to Fan Min %.
+- **Manual** — **Manual Fan** `switch` (on/off) + **Manual Fan Speed** `number`
+  (0–100 %). Off forces 0 %.
+- A single template sensor (`fan_speed_pct`) resolves the duty for both modes
+  and drives the PWM output, so "Fan Speed" always reflects the actual duty.
+- **Safety overrides apply in all modes:** NaN sensor read and the >60 s
+  sensor-stall failsafe still force the fan to 100 % even in Manual. The
+  temperature alarm remains indicator-only (does not force the fan).
+- The stock ESPHome web UI cannot hide entities by state, so manual controls
+  are always shown (inert in Auto); `web_server` sorting groups keep them
+  organised. Per-mode conditional UI, if wanted, belongs in a Home Assistant
+  dashboard keyed on the mode entity.
+
 ## 3. Architecture
 
 One file, one responsibility:

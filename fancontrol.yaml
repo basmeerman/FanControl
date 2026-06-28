@@ -91,6 +91,15 @@ mqtt:
 web_server:
   port: 80
   version: 3
+  # The stock web UI cannot hide entities by state, so manual controls are
+  # always visible (they are simply inert in Auto mode). Groups keep it tidy.
+  sorting_groups:
+    - id: group_operation
+      name: "Operation"
+      sorting_weight: 10
+    - id: group_manual
+      name: "Manual control"
+      sorting_weight: 20
 
 # -------- Globals (restore_value = persisted across reboots) --------
 
@@ -127,7 +136,8 @@ sensor:
       filters:
         - filter_out: nan
 
-  # Fan speed derived from the curve. Drives the PWM output via on_value.
+  # Resolved fan speed. Single driver of the PWM output (via on_value) for
+  # BOTH modes, so this sensor always reflects the actual duty being applied.
   - platform: template
     name: "Fan Speed"
     id: fan_speed_pct
@@ -136,9 +146,21 @@ sensor:
     update_interval: 1s
     lambda: |-
       const float t = id(dht_temperature).state;
-      if (std::isnan(t)) return 100.0f;  // sensor warmup / NaN → failsafe bias
-      if (id(alarm_sensor_stall).state) return 100.0f;  // SW watchdog stall
 
+      // Safety overrides apply in ALL modes (Auto and Manual). Preserve these.
+      if (std::isnan(t)) return 100.0f;                 // sensor warmup / NaN → failsafe
+      if (id(alarm_sensor_stall).state) return 100.0f;  // SW watchdog stall → failsafe
+
+      // Manual mode: user-controlled on/off + speed. Off forces 0 %.
+      if (id(operating_mode).state == "Manual") {
+        if (!id(manual_fan_switch).state) return 0.0f;
+        float m = id(manual_fan_speed).state;
+        if (m < 0.0f)   m = 0.0f;
+        if (m > 100.0f) m = 100.0f;
+        return m;
+      }
+
+      // Auto mode: temperature-driven curve (clamped to Fan Min %).
       const float ts[5] = { ${curve_t0}, ${curve_t1}, ${curve_t2}, ${curve_t3}, ${curve_t4} };
       const float ps[5] = { ${curve_p0}, ${curve_p1}, ${curve_p2}, ${curve_p3}, ${curve_p4} };
 
@@ -206,9 +228,60 @@ binary_sensor:
       if (id(last_sensor_read_ms) == 0) return {};
       return (millis() - id(last_sensor_read_ms)) > 60000;
 
+# -------- Operating mode + manual controls --------
+
+select:
+  - platform: template
+    name: "Operating Mode"
+    id: operating_mode
+    icon: mdi:fan-auto
+    web_server:
+      sorting_group_id: group_operation
+    optimistic: true
+    restore_value: true
+    initial_option: "Auto"
+    options:
+      - "Auto"
+      - "Manual"
+    # Recompute the resolved fan speed immediately on mode change.
+    on_value:
+      - component.update: fan_speed_pct
+
+switch:
+  - platform: template
+    name: "Manual Fan"
+    id: manual_fan_switch
+    icon: mdi:fan
+    web_server:
+      sorting_group_id: group_manual
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    # Only takes effect in Manual mode; inert in Auto.
+    on_turn_on:
+      - component.update: fan_speed_pct
+    on_turn_off:
+      - component.update: fan_speed_pct
+
 # -------- Tunable settings (number components, persisted via restore_value) --------
 
 number:
+  - platform: template
+    name: "Manual Fan Speed"
+    id: manual_fan_speed
+    web_server:
+      sorting_group_id: group_manual
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    initial_value: 50
+    restore_value: true
+    optimistic: true
+    mode: slider
+    # Only takes effect in Manual mode (with Manual Fan on); inert in Auto.
+    on_value:
+      - component.update: fan_speed_pct
+
   - platform: template
     name: "Alarm Temperature"
     id: alarm_temp_threshold
