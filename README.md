@@ -74,17 +74,33 @@ broker — no manual entity setup needed. Exposed entities:
 |---|---|---|
 | Temperature | sensor | °C, from DHT22 |
 | Humidity | sensor | %, from DHT22 |
-| Fan Speed | sensor | % duty, derived from the curve |
+| Fan Speed | sensor | % duty actually applied (curve in Auto, manual setting in Manual) |
 | Fan PWM Frequency | sensor | Hz |
 | Restart Counter | sensor | monotonic, persisted in NVS |
 | Uptime | sensor | seconds |
 | WiFi Signal | sensor | dBm |
 | Temperature Alarm | binary_sensor | `safety` class, fires at the configured threshold |
 | Sensor Alarm | binary_sensor | `problem` class, fires after 60 s of no successful reads |
+| Operating Mode | select | `Auto` (curve) or `Manual`, persisted |
+| Manual Fan | switch | on/off — Manual mode only |
+| Manual Fan Speed | number | 0–100 % — Manual mode only |
 | Alarm Temperature | number | tunable threshold |
-| Fan Min % | number | minimum duty under normal operation |
+| Fan Min % | number | minimum duty under normal operation (Auto) |
 | Fan PWM Frequency Setting | number | 1000–5000 Hz, applied live via `ledc.set_frequency` |
 | Restart / Factory Reset | button | standard ESPHome buttons |
+
+## Operating modes
+
+- **Auto** (default) — fan speed follows the temperature curve, clamped to `Fan Min %`.
+- **Manual** — `Manual Fan` toggles the fan and `Manual Fan Speed` sets the duty
+  directly (off forces 0 %).
+
+Safety failsafes apply in **both** modes: a NaN reading or a >60 s sensor stall
+forces the fan to 100 %, even in Manual.
+
+> The built-in ESPHome web page can't hide entities by mode, so the manual
+> controls are always visible (they're simply inert in Auto). For per-mode UI,
+> use a Home Assistant dashboard with conditional cards keyed on `Operating Mode`.
 
 ## Safety behaviour
 
