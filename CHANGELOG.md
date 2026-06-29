@@ -17,9 +17,11 @@ Release notes for each tagged version are extracted from this file by the
   number. A single resolved-speed template sensor drives the PWM in both modes,
   so `Fan Speed` always reflects the actual duty. Safety failsafes (NaN read,
   >60 s sensor stall → 100 %) still apply in **all** modes, including Manual.
-  Mode + manual controls are grouped on the web UI via `web_server`
-  sorting groups (the stock UI can't hide entities by state, so they are shown
-  but inert in Auto).
+  Controls are ordered on the web UI via `web_server` sorting groups —
+  **Operation** (Operating Mode) → **Manual control** (Manual Fan, Manual Fan
+  Speed) → **Auto settings** (Fan Min %, Alarm Temperature, PWM Frequency). The
+  stock UI can't hide entities by state, so all are shown but inert in the
+  inactive mode.
 
 ### Changed
 - Home Assistant transport switched from the native ESPHome **`api:` to
